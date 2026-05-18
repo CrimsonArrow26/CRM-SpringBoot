@@ -1,0 +1,151 @@
+package com.crm.controller;
+
+import com.crm.dto.DealDto;
+import com.crm.service.DealService;
+import com.crm.util.AuthenticationUtils;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+
+@RestController
+@RequestMapping("/api/deals")
+@CrossOrigin(origins = "*")
+public class DealController {
+    
+    @Autowired
+    private DealService dealService;
+    
+    @Autowired
+    private AuthenticationUtils authenticationUtils;
+    
+    @PostMapping
+    @PreAuthorize("hasAnyRole('Admin','Manager','Sales Rep')")
+    public ResponseEntity<?> createDeal(@Valid @RequestBody DealDto dealDto, Authentication authentication, HttpServletRequest request) {
+        try {
+            // Extract orgId and memberId from JWT token
+            Long orgId = authenticationUtils.getOrgIdFromAuthentication(authentication, request);
+            Long memberId = authenticationUtils.getMemberIdFromAuthentication(authentication, request);
+            
+            dealDto.setOrgId(orgId);
+            dealDto.setMemberId(memberId);
+            
+            DealDto createdDeal = dealService.createDeal(dealDto);
+            return ResponseEntity.ok(createdDeal);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+    
+    @GetMapping
+    @PreAuthorize("hasAnyRole('Admin','Manager','Sales Rep')")
+    public ResponseEntity<?> getDealsByOrganization(
+            Authentication authentication,
+            HttpServletRequest request,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String stage,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir) {
+        try {
+            Long orgId = authenticationUtils.getOrgIdFromAuthentication(authentication, request);
+
+            Sort sort = sortDir.equalsIgnoreCase("asc")
+                    ? Sort.by(sortBy).ascending()
+                    : Sort.by(sortBy).descending();
+            PageRequest pageRequest = PageRequest.of(page, size, sort);
+
+            Page<DealDto> deals = dealService.getDealsByOrganizationPaginated(orgId, stage, search, pageRequest);
+            return ResponseEntity.ok(deals);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/my")
+    @PreAuthorize("hasAnyRole('Admin','Manager','Sales Rep','User')")
+    public ResponseEntity<?> getDealsForCurrentUser(Authentication authentication, HttpServletRequest request) {
+        try {
+            Long orgId = authenticationUtils.getOrgIdFromAuthentication(authentication, request);
+            Long memberId = authenticationUtils.getMemberIdFromAuthentication(authentication, request);
+            List<DealDto> deals = dealService.getDealsForCurrentUser(orgId, memberId);
+            return ResponseEntity.ok(deals);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/summary")
+    @PreAuthorize("hasAnyRole('Admin','Manager','Sales Rep')")
+    public ResponseEntity<?> getDealSummary(Authentication authentication, HttpServletRequest request) {
+        try {
+            Long orgId = authenticationUtils.getOrgIdFromAuthentication(authentication, request);
+            return ResponseEntity.ok(dealService.getMonthlySummary(orgId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/stages")
+    @PreAuthorize("hasAnyRole('Admin','Manager','Sales Rep')")
+    public ResponseEntity<?> getDealStageDistribution(Authentication authentication, HttpServletRequest request) {
+        try {
+            Long orgId = authenticationUtils.getOrgIdFromAuthentication(authentication, request);
+            return ResponseEntity.ok(dealService.getStageDistribution(orgId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+    
+    @GetMapping("/{dealId}")
+    @PreAuthorize("hasAnyRole('Admin','Manager','Sales Rep')")
+    public ResponseEntity<?> getDealById(@PathVariable Long dealId) {
+        try {
+            DealDto deal = dealService.getDealById(dealId);
+            return ResponseEntity.ok(deal);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+    
+    @PutMapping("/{dealId}")
+    @PreAuthorize("hasAnyRole('Admin','Manager','Sales Rep')")
+    public ResponseEntity<?> updateDeal(@PathVariable Long dealId, @Valid @RequestBody DealDto dealDto) {
+        try {
+            DealDto updatedDeal = dealService.updateDeal(dealId, dealDto);
+            return ResponseEntity.ok(updatedDeal);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+    
+    @DeleteMapping("/{dealId}")
+    @PreAuthorize("hasAnyRole('Admin','Manager','Sales Rep')")
+    public ResponseEntity<?> deleteDeal(@PathVariable Long dealId) {
+        try {
+            dealService.deleteDeal(dealId);
+            return ResponseEntity.ok("Deal deleted successfully");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+    
+    private Long getOrgIdFromAuthentication(Authentication authentication) {
+        // Extract orgId from JWT token claims
+        if (authentication != null && authentication.getPrincipal() instanceof org.springframework.security.core.userdetails.UserDetails) {
+            return 1L; // Default orgId for now
+        }
+        return 1L; // Default fallback
+    }
+}

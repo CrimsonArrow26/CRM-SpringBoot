@@ -1,0 +1,276 @@
+package com.crm.service;
+
+import com.crm.dto.DealDto;
+import com.crm.entity.Deal;
+import com.crm.entity.Member;
+import com.crm.entity.Organization;
+import com.crm.entity.Account;
+import com.crm.entity.Contact;
+import com.crm.repository.DealRepository;
+import com.crm.repository.MemberRepository;
+import com.crm.repository.OrganizationRepository;
+import com.crm.repository.AccountRepository;
+import com.crm.repository.ContactRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+@Service
+@Transactional
+public class DealService {
+
+    private final DealRepository dealRepository;
+    private final OrganizationRepository organizationRepository;
+    private final MemberRepository memberRepository;
+    private final AccountRepository accountRepository;
+    private final ContactRepository contactRepository;
+
+    public DealService(DealRepository dealRepository, OrganizationRepository organizationRepository,
+                       MemberRepository memberRepository, AccountRepository accountRepository,
+                       ContactRepository contactRepository) {
+        this.dealRepository = dealRepository;
+        this.organizationRepository = organizationRepository;
+        this.memberRepository = memberRepository;
+        this.accountRepository = accountRepository;
+        this.contactRepository = contactRepository;
+    }
+    
+    public DealDto createDeal(DealDto dealDto) {
+        // Validate that orgId and memberId are provided (auto-populated by controller)
+        if (dealDto.getOrgId() == null) {
+            throw new RuntimeException("Organization ID is required");
+        }
+        if (dealDto.getMemberId() == null) {
+            throw new RuntimeException("Member ID is required");
+        }
+        
+        Organization organization = organizationRepository.findById(dealDto.getOrgId())
+                .orElseThrow(() -> new RuntimeException("Organization not found"));
+        
+        Member member = memberRepository.findById(dealDto.getMemberId())
+                .orElseThrow(() -> new RuntimeException("Member not found"));
+        
+        Account account = null;
+        if (dealDto.getAccountId() != null) {
+            account = accountRepository.findById(dealDto.getAccountId())
+                    .orElseThrow(() -> new RuntimeException("Account not found"));
+        }
+        
+        Contact contact = null;
+        if (dealDto.getContactId() != null) {
+            contact = contactRepository.findById(dealDto.getContactId())
+                    .orElseThrow(() -> new RuntimeException("Contact not found"));
+        }
+        
+        Deal deal = new Deal();
+        deal.setDealName(dealDto.getDealName());
+        deal.setDescription(dealDto.getDescription());
+        deal.setDealValue(dealDto.getDealValue());
+        deal.setDealStage(dealDto.getDealStage());
+        deal.setExpectedCloseDate(dealDto.getExpectedCloseDate());
+        deal.setActualCloseDate(dealDto.getActualCloseDate());
+        deal.setProbability(dealDto.getProbability());
+        deal.setOrganization(organization);
+        deal.setMember(member);
+        deal.setAccount(account);
+        deal.setContact(contact);
+        
+        Deal savedDeal = dealRepository.save(deal);
+        return convertToDto(savedDeal);
+    }
+    
+    @Transactional(readOnly = true)
+    public List<DealDto> getDealsByOrganization(Long orgId) {
+        Organization organization = organizationRepository.findById(orgId)
+                .orElseThrow(() -> new RuntimeException("Organization not found"));
+
+        return dealRepository.findByOrganizationWithRelations(organization)
+                .stream()
+                .map(this::convertToDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public Page<DealDto> getDealsByOrganizationPaginated(Long orgId, String stage,
+                                                          String search, Pageable pageable) {
+        Organization organization = organizationRepository.findById(orgId)
+                .orElseThrow(() -> new RuntimeException("Organization not found"));
+
+        org.springframework.data.domain.Page<Deal> page;
+
+        if (search != null && !search.isBlank()) {
+            if (stage != null && !stage.isBlank()) {
+                page = dealRepository.findByOrganizationAndStageWithSearch(organization, stage, search, pageable);
+            } else {
+                page = dealRepository.findByOrganizationWithSearch(organization, search, pageable);
+            }
+        } else {
+            if (stage != null && !stage.isBlank()) {
+                page = dealRepository.findByOrganizationAndStage(organization, stage, pageable);
+            } else {
+                page = dealRepository.findByOrganizationWithRelations(organization, pageable);
+            }
+        }
+
+        return page.map(this::convertToDto);
+    }
+    
+    @Transactional(readOnly = true)
+    public List<DealDto> getDealsByMember(Long orgId, Long memberId) {
+        Organization organization = organizationRepository.findById(orgId)
+                .orElseThrow(() -> new RuntimeException("Organization not found"));
+
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new RuntimeException("Member not found"));
+
+        // Extra safety: ensure the member actually belongs to the requested organization
+        if (member.getOrganization() == null ||
+                !organization.getOrgId().equals(member.getOrganization().getOrgId())) {
+            throw new RuntimeException("Member does not belong to this organization");
+        }
+
+        return dealRepository.findByMemberWithRelations(member)
+                .stream()
+                .map(this::convertToDto)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Deals for the currently logged-in user, with special handling for the
+     * portal "User" role:
+     *
+     * - Internal roles (Admin/Manager/Sales Rep): deals where they are the owner (member).
+     * - User role: deals where the linked contact/account email matches their login email.
+     */
+    @Transactional(readOnly = true)
+    public List<DealDto> getDealsForCurrentUser(Long orgId, Long memberId) {
+        Organization organization = organizationRepository.findById(orgId)
+                .orElseThrow(() -> new RuntimeException("Organization not found"));
+
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new RuntimeException("Member not found"));
+
+        if (member.getOrganization() == null ||
+                !organization.getOrgId().equals(member.getOrganization().getOrgId())) {
+            throw new RuntimeException("Member does not belong to this organization");
+        }
+
+        String roleName = member.getRole() != null ? member.getRole().getRoleName() : null;
+        List<Deal> deals;
+
+        if (roleName != null && roleName.equalsIgnoreCase("User")) {
+            // Portal/customer user: match deals via contact/account email
+            deals = dealRepository.findByOrganizationAndPartyEmail(organization, member.getEmail());
+        } else {
+            // Internal CRM users: deals they own
+            deals = dealRepository.findByMemberWithRelations(member);
+        }
+
+        return deals.stream()
+                .map(this::convertToDto)
+                .collect(Collectors.toList());
+    }
+    
+    @Transactional(readOnly = true)
+    public DealDto getDealById(Long dealId) {
+        Deal deal = dealRepository.findByIdWithRelations(dealId);
+        if (deal == null) {
+            throw new RuntimeException("Deal not found");
+        }
+        return convertToDto(deal);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getMonthlySummary(Long orgId) {
+        Organization organization = organizationRepository.findById(orgId)
+                .orElseThrow(() -> new RuntimeException("Organization not found"));
+
+        List<Object[]> rows = dealRepository.findMonthlyDealSummaryByOrganization(organization);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object[] r : rows) {
+            Map<String, Object> row = new HashMap<>();
+            row.put("year", ((Number) r[0]).longValue());
+            row.put("month", ((Number) r[1]).longValue());
+            row.put("dealCount", ((Number) r[2]).longValue());
+            result.add(row);
+        }
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getStageDistribution(Long orgId) {
+        Organization organization = organizationRepository.findById(orgId)
+                .orElseThrow(() -> new RuntimeException("Organization not found"));
+
+        List<Object[]> rows = dealRepository.findDealStageDistributionByOrganization(organization);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object[] r : rows) {
+            Map<String, Object> row = new HashMap<>();
+            row.put("stage", r[0]);
+            row.put("count", ((Number) r[1]).intValue());
+            result.add(row);
+        }
+        return result;
+    }
+    
+    public DealDto updateDeal(Long dealId, DealDto dealDto) {
+        Deal deal = dealRepository.findById(dealId)
+                .orElseThrow(() -> new RuntimeException("Deal not found"));
+        
+        deal.setDealName(dealDto.getDealName());
+        deal.setDescription(dealDto.getDescription());
+        deal.setDealValue(dealDto.getDealValue());
+        deal.setDealStage(dealDto.getDealStage());
+        deal.setExpectedCloseDate(dealDto.getExpectedCloseDate());
+        deal.setActualCloseDate(dealDto.getActualCloseDate());
+        deal.setProbability(dealDto.getProbability());
+        
+        if (dealDto.getAccountId() != null) {
+            Account account = accountRepository.findById(dealDto.getAccountId())
+                    .orElseThrow(() -> new RuntimeException("Account not found"));
+            deal.setAccount(account);
+        }
+        
+        if (dealDto.getContactId() != null) {
+            Contact contact = contactRepository.findById(dealDto.getContactId())
+                    .orElseThrow(() -> new RuntimeException("Contact not found"));
+            deal.setContact(contact);
+        }
+        
+        Deal savedDeal = dealRepository.save(deal);
+        return convertToDto(savedDeal);
+    }
+    
+    public void deleteDeal(Long dealId) {
+        if (!dealRepository.existsById(dealId)) {
+            throw new RuntimeException("Deal not found");
+        }
+        dealRepository.deleteById(dealId);
+    }
+    
+    private DealDto convertToDto(Deal deal) {
+        DealDto dto = new DealDto();
+        dto.setDealId(deal.getDealId());
+        dto.setDealName(deal.getDealName());
+        dto.setDescription(deal.getDescription());
+        dto.setDealValue(deal.getDealValue());
+        dto.setDealStage(deal.getDealStage());
+        dto.setExpectedCloseDate(deal.getExpectedCloseDate());
+        dto.setActualCloseDate(deal.getActualCloseDate());
+        dto.setProbability(deal.getProbability());
+        dto.setOrgId(deal.getOrganization().getOrgId());
+        dto.setMemberId(deal.getMember().getMemberId());
+        dto.setAccountId(deal.getAccount() != null ? deal.getAccount().getAccountId() : null);
+        dto.setContactId(deal.getContact() != null ? deal.getContact().getContactId() : null);
+        dto.setCreatedAt(deal.getCreatedAt());
+        dto.setUpdatedAt(deal.getUpdatedAt());
+        return dto;
+    }
+}

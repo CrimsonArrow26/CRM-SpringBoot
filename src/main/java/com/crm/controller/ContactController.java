@@ -1,0 +1,100 @@
+package com.crm.controller;
+
+import com.crm.dto.ContactDto;
+import com.crm.service.ContactService;
+import com.crm.util.AuthenticationUtils;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/contacts")
+@CrossOrigin(origins = "*")
+@PreAuthorize("hasAnyRole('Admin','Manager','Sales Rep')")
+public class ContactController {
+    
+    @Autowired
+    private ContactService contactService;
+    
+    @Autowired
+    private AuthenticationUtils authenticationUtils;
+    
+    @PostMapping
+    public ResponseEntity<?> createContact(@Valid @RequestBody ContactDto contactDto, Authentication authentication, HttpServletRequest request) {
+        try {
+            // Extract orgId and memberId from JWT token
+            Long orgId = authenticationUtils.getOrgIdFromAuthentication(authentication, request);
+            Long memberId = authenticationUtils.getMemberIdFromAuthentication(authentication, request);
+            
+            contactDto.setOrgId(orgId);
+            contactDto.setMemberId(memberId);
+            
+            ContactDto createdContact = contactService.createContact(contactDto);
+            return ResponseEntity.ok(createdContact);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+    
+    @GetMapping
+    public ResponseEntity<?> getContactsByOrganization(
+            Authentication authentication,
+            HttpServletRequest request,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "contactName") String sortBy,
+            @RequestParam(defaultValue = "asc") String sortDir) {
+        try {
+            Long orgId = authenticationUtils.getOrgIdFromAuthentication(authentication, request);
+
+            Sort sort = sortDir.equalsIgnoreCase("desc")
+                    ? Sort.by(sortBy).descending()
+                    : Sort.by(sortBy).ascending();
+            PageRequest pageRequest = PageRequest.of(page, size, sort);
+
+            Page<ContactDto> contacts = contactService.getContactsByOrganizationPaginated(orgId, search, pageRequest);
+            return ResponseEntity.ok(contacts);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+    
+    @GetMapping("/{contactId}")
+    public ResponseEntity<?> getContactById(@PathVariable Long contactId) {
+        try {
+            ContactDto contact = contactService.getContactById(contactId);
+            return ResponseEntity.ok(contact);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+    
+    @PutMapping("/{contactId}")
+    public ResponseEntity<?> updateContact(@PathVariable Long contactId, @Valid @RequestBody ContactDto contactDto) {
+        try {
+            ContactDto updatedContact = contactService.updateContact(contactId, contactDto);
+            return ResponseEntity.ok(updatedContact);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+    
+    @DeleteMapping("/{contactId}")
+    public ResponseEntity<?> deleteContact(@PathVariable Long contactId) {
+        try {
+            contactService.deleteContact(contactId);
+            return ResponseEntity.ok("Contact deleted successfully");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+    
+}

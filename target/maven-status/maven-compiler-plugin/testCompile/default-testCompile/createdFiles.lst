@@ -1,0 +1,4 @@
+com\crm\service\LeadServiceTest.class
+com\crm\service\DealServiceTest.class
+com\crm\service\AccountServiceTest.class
+com\crm\service\ContactServiceTest.class
