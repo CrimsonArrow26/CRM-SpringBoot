@@ -66,7 +66,7 @@ function Activities() {
       setLoading(true);
       console.log('Fetching activities...');
       const response = await api.get('/activities');
-      setActivities(response.data);
+      setActivities(response.data.content || response.data);
       console.log('Activities fetched successfully:', response.data);
     } catch (error) {
       console.error('Error fetching activities:', error);
@@ -79,7 +79,7 @@ function Activities() {
   const fetchAccounts = async () => {
     try {
       const response = await api.get('/accounts');
-      setAccounts(response.data);
+      setAccounts(response.data.content || response.data);
     } catch (error) {
       console.error('Error fetching accounts:', error);
     }
@@ -88,7 +88,7 @@ function Activities() {
   const fetchContacts = async () => {
     try {
       const response = await api.get('/contacts');
-      setContacts(response.data);
+      setContacts(response.data.content || response.data);
     } catch (error) {
       console.error('Error fetching contacts:', error);
     }
@@ -97,7 +97,7 @@ function Activities() {
   const fetchDeals = async () => {
     try {
       const response = await api.get('/deals');
-      setDeals(response.data);
+      setDeals(response.data.content || response.data);
     } catch (error) {
       console.error('Error fetching deals:', error);
     }
@@ -106,7 +106,7 @@ function Activities() {
   const fetchLeads = async () => {
     try {
       const response = await api.get('/leads');
-      setLeads(response.data);
+      setLeads(response.data.content || response.data);
     } catch (error) {
       console.error('Error fetching leads:', error);
     }

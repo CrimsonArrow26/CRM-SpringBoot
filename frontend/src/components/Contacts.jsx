@@ -23,7 +23,7 @@ function Contacts() {
     try {
       setLoading(true);
       const response = await api.get('/contacts');
-      setContacts(response.data);
+      setContacts(response.data.content || response.data);
     } catch (error) {
       console.error('Error fetching contacts:', error);
       setError('Failed to fetch contacts');

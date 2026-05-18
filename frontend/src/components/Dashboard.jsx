@@ -146,19 +146,26 @@ function Dashboard() {
         isManagerOrAdmin ? api.get('/deals/stages').catch(() => ({ data: [] })) : Promise.resolve({ data: [] })
       ]);
 
-      const leads = leadsRes.data || [];
-      const deals = dealsRes.data || [];
-      const activities = activitiesRes.data || [];
+      const extractData = (res) => {
+        if (!res || !res.data) return [];
+        return Array.isArray(res.data) ? res.data : (res.data.content || []);
+      };
+
+      const leads = extractData(leadsRes);
+      const contacts = extractData(contactsRes);
+      const accounts = extractData(accountsRes);
+      const deals = extractData(dealsRes);
+      const activities = extractData(activitiesRes);
 
       setStats({
         totalLeads: leads.length,
-        totalContacts: contactsRes.data?.length || 0,
-        totalAccounts: accountsRes.data?.length || 0,
+        totalContacts: contacts.length,
+        totalAccounts: accounts.length,
         totalDeals: deals.length,
         totalActivities: activities.length,
         verifiedLeads: leads.filter(lead => lead.isVerified).length,
-        activeDeals: deals.filter(deal => deal.stage !== 'Closed').length,
-        totalValue: deals.reduce((sum, deal) => sum + (deal.value || deal.dealValue || 0), 0)
+        activeDeals: deals.filter(deal => deal.dealStage !== 'Closed').length,
+        totalValue: deals.reduce((sum, deal) => sum + (parseFloat(deal.dealValue) || 0), 0)
       });
 
       const sortedActivities = [...activities]
@@ -174,8 +181,8 @@ function Dashboard() {
 
       // Use backend summaries if available
       // Ensure arrays
-const dealSummary = Array.isArray(dealSummaryRes.data) ? dealSummaryRes.data : [];
-const leadSummary = Array.isArray(leadSummaryRes.data) ? leadSummaryRes.data : [];
+const dealSummary = Array.isArray(dealSummaryRes.data) ? dealSummaryRes.data : (dealSummaryRes.data?.content || []);
+const leadSummary = Array.isArray(leadSummaryRes.data) ? leadSummaryRes.data : (leadSummaryRes.data?.content || []);
 
 // If API returned monthly summary → merge Deal + Lead summaries
 if (dealSummary.length > 0 || leadSummary.length > 0) {
@@ -225,7 +232,7 @@ else {
 
       if (valueKey === 'leads') entry.leads += 1;
       if (valueKey === 'deals') entry.deals += 1;
-      if (valueKey === 'revenue') entry.revenue += item.value || item.dealValue || 0;
+      if (valueKey === 'revenue') entry.revenue += parseFloat(item.dealValue) || 0;
 
       map.set(key, entry);
     }
@@ -254,7 +261,7 @@ else {
 }
 
 
-const stages = Array.isArray(dealStagesRes.data) ? dealStagesRes.data : [];
+const stages = Array.isArray(dealStagesRes.data) ? dealStagesRes.data : (dealStagesRes.data?.content || []);
 
 const colors = [
   '#2563EB', // Bright Blue

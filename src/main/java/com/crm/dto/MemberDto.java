@@ -2,6 +2,7 @@ package com.crm.dto;
 
 import com.crm.entity.Member;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -24,6 +25,7 @@ public class MemberDto {
     
     @NotBlank(message = "Password is required")
     @Size(min = 6, message = "Password must be at least 6 characters")
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
     
     private Member.MemberStatus status;

@@ -39,7 +39,7 @@ function Members() {
     try {
       setLoading(true);
       const response = await api.get('/members');
-      setMembers(response.data);
+      setMembers(response.data.content || response.data);
     } catch (error) {
       console.error('Error fetching members:', error);
       toast.error('Failed to fetch members');
@@ -147,12 +147,12 @@ function Members() {
     });
   };
 
-  const filteredMembers = members.filter(member => {
+  const filteredMembers = Array.isArray(members) ? members.filter(member => {
     const matchesSearch = member.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          member.email?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = !roleFilter || member.roleId?.toString() === roleFilter;
     return matchesSearch && matchesRole;
-  });
+  }) : [];
 
   const getStatusColor = (status) => {
     const colors = {

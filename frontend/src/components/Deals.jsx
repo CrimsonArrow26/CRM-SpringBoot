@@ -54,7 +54,7 @@ function Deals() {
     try {
       setLoading(true);
       const response = await api.get('/deals');
-      setDeals(response.data);
+      setDeals(response.data.content || response.data);
     } catch (error) {
       console.error('Error fetching deals:', error);
       toast.error('Failed to fetch deals');
@@ -66,7 +66,7 @@ function Deals() {
   const fetchAccounts = async () => {
     try {
       const response = await api.get('/accounts');
-      setAccounts(response.data);
+      setAccounts(response.data.content || response.data);
     } catch (error) {
       console.error('Error fetching accounts:', error);
     }
@@ -75,7 +75,7 @@ function Deals() {
   const fetchContacts = async () => {
     try {
       const response = await api.get('/contacts');
-      setContacts(response.data);
+      setContacts(response.data.content || response.data);
     } catch (error) {
       console.error('Error fetching contacts:', error);
     }

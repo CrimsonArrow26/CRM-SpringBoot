@@ -33,7 +33,7 @@ function Accounts() {
     try {
       setLoading(true);
       const response = await api.get('/accounts');
-      setAccounts(response.data);
+      setAccounts(response.data.content || response.data);
     } catch (error) {
       console.error('Error fetching accounts:', error);
       toast.error('Failed to fetch accounts');
